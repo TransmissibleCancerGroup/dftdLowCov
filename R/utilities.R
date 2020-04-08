@@ -72,3 +72,100 @@ is.overlap <- function(a, b) {
     stopifnot(length(a) == 2 & length(b) == 2)
     return (a[2] >= b[1] & a[1] < b[2])
 }
+
+#' Generate a colour palette for the DFT1 clades
+#' @export
+clade_colours <- function() {
+    rgb2hex <- function(rgb) {
+        rgb2hex_inner <- function(rgb_) {
+            digits <- c(0:9, LETTERS[1:6])
+            leading <- floor(rgb_ / 16)
+            trailing <- rgb_ %% 16
+            paste0(digits[leading+1], digits[trailing+1])
+        }
+        paste0(c("#", sapply(rgb, rgb2hex_inner)), collapse="")
+    }
+
+    colours <- c(                      # Previous values (before March 6 2020)
+        A1=rgb2hex(c(209, 38, 48)),    # 214, 43, 56
+        A2=rgb2hex(c(240, 126, 167)),  # 241, 162, 177
+        B=rgb2hex(c(103, 137, 206)),   # 92, 140, 196
+        C=rgb2hex(c(73, 190, 114)),    # 16, 185, 127
+        D=rgb2hex(c(248, 155, 15)),    # 254, 163, 56
+        E=rgb2hex(c(38, 44, 113)))     # 37, 42, 113
+
+    return (colours)
+}
+
+#' Write sequence information in a table to FASTA format
+#' @export
+write_fasta <- function(filename, table) {
+    msg <- "Table should have labels in a 'label' column and sequences in a 'sequence' column"
+
+    if(!("sequence" %in% colnames(table))) {
+        stop(msg)
+    }
+
+    if (!("label" %in% colnames(table))) {
+        stop(msg)
+    }
+
+    conn <- file(filename,
+                 open = "w")
+
+    for (i in 1:nrow(table)) {
+        cat(sprintf(">%s\n%s\n\n", table[i, label], table[i, sequence]), file = conn)
+    }
+
+    close(conn)
+}
+
+#' Split a string into a vector of component characters
+#' @export
+split_chars <- function(s) {
+    if (length(s) > 1) {
+        stop("This function is for single strings only")
+    }
+
+    if (nchar(s) == 1) return (s)
+
+    return(strsplit(s, "")[[1]])
+}
+
+#' Check if a vector of characters is a variant site
+#' @export
+is_variant_site <- function(chars, alphabet = c("DNA", "BINARY")) {
+    dna_chars <- list(A=1,  C=2,  G=4,  T=8,
+                      B=14, D=13, H=11, V=7,
+                      R=5,  Y=10, S=6,  W=9,
+                      K=12, M=3, N=15)
+
+    binary_chars <- list(`0`=1, `1`=2, N=3)
+
+    # Checks
+
+    if (!is.character(chars)) chars <- as.character(chars)
+
+    if (length(chars) == 1) {
+        if (nchar(chars[1]) > 1) {
+            chars <- split_chars(chars[1])
+        }
+    }
+
+    alphabet <- match.arg(alphabet, c("DNA", "BINARY"))
+
+    if (alphabet == "DNA") {
+        translator <- dna_chars
+    } else if (alphabet == "BINARY") {
+        translator <- binary_chars
+    }
+
+    u <- sapply(toupper(chars), function(char) translator[[char]])
+
+    # A variant site will reduce to zero via bitwise&, an invariant site will not
+    # E.g. if A = 0001, C = 0010 and N = 1111:
+    # AC (variant) -> 0001 & 0010 = 0000
+    # AA (invariant) -> 0001 & 0001 = 0001
+    # CN (invariant) -> 0010 & 1111 = 0010
+    Reduce(bitwAnd, u) == 0
+}
