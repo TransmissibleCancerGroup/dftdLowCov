@@ -5,8 +5,9 @@
 \title{Simulation code}
 \usage{
 do_simulation(input_data, chrlengths, simulation_name, nsims, base_outdir,
-  write_output = FALSE, keep_to_original_chrom = FALSE,
-  hard_bounds = FALSE, parametric = FALSE)
+  plot_every = 100, write_output = FALSE,
+  keep_to_original_chrom = FALSE, hard_bounds = FALSE,
+  parametric = FALSE)
 }
 \arguments{
 \item{input_data}{data.table; table of CNVs}
@@ -18,6 +19,8 @@ do_simulation(input_data, chrlengths, simulation_name, nsims, base_outdir,
 \item{nsims}{int; number of simulation replicates}
 
 \item{base_outdir}{path; output will be written under this path}
+
+\item{plot_every}{int; draw a chromosome map every `plot_every` reps}
 
 \item{write_output}{bool; write output to disk?}
 
