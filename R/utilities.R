@@ -169,3 +169,16 @@ is_variant_site <- function(chars, alphabet = c("DNA", "BINARY")) {
     # CN (invariant) -> 0010 & 1111 = 0010
     Reduce(bitwAnd, u) == 0
 }
+
+
+#' Pad vector v to length padlen, using padval as the added value
+#' If v is already as long as or longer than padlen, return v
+#' (this function does not truncate)
+#' @export
+pad <- function(v, padlen, padval = 0) {
+    l <- length(v)
+    if (l >= padlen) {
+        return (v)
+    }
+    return(c(v, rep(padval, (padlen - l))))
+}

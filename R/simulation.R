@@ -1,9 +1,247 @@
+make_bins <- function(chrom_lengths, binsize = 100000) {
+    bins <-
+        chrom_lengths[, .(seqnames = toupper(sub("Chr", "", CHROM)),
+                          start = seq(0, max(LENGTH) - binsize, binsize),
+                          end = seq(0, max(LENGTH) - binsize, binsize) + binsize - 1),
+                      by = CHROM][, .(seqnames, start, end)]
+
+
+    setkey(bins, seqnames, start, end)
+    # setkeyv(subject, key(bins))
+    bins
+}
+
+#' Calculates the depth of coverage (of CNV segments) for the genome,
+#' discretised into bins of size `binsize`
+depth_of_coverage <- function(data, chrom_lengths, binsize = 100000) {
+    bins <- make_bins(chrom_lengths, binsize)
+    setkey(data, seqnames, start, end)
+    ol <- foverlaps(bins, data)
+    ol[, present := ifelse(is.na(start), 0L, 1L)]
+    ol[, depth := sum(present), by = .(seqnames, i.start, i.end)]
+    ol
+}
+
+doc_summary <- function(doc_result) {
+    doc_result[, .(nBins = uniqueN(i.start)), by = .(seqnames, depth)][order(seqnames, depth)]
+}
+
+randomize_positions_within_chrom <- function(data, chromosome_ranges, wraparound = FALSE) {
+    setkey(chromosome_ranges, seqnames)
+    data <- chromosome_ranges[data, .(seqnames, chromsize = width, start = i.start, end = i.end, width = i.width, State, Unique.ID)]
+    data[, rstart := as.integer(0)]
+
+    if (wraparound) {
+        data[, rstart := sample.int(chromsize, size = .N, replace = TRUE), by = seqnames]
+    } else {
+        data[chromsize - width + 1 > 0, rstart := sapply(chromsize - width + 1, sample.int, size = 1)]
+    }
+
+    data[, rend := as.integer(rstart + width - 1)]
+    data[, wrapped := FALSE]
+    data <- data[, .(seqnames, chromsize, start = rstart, end = rend, width = as.integer(rend - rstart + 1), Unique.ID, State, wrapped)]
+    data[, c("start", "end", "width") := lapply(.SD, as.numeric), .SDcols = c("start", "end", "width")]
+
+    if (wraparound) {
+        data <- wrap_around(data, data[["chromsize"]])
+    } else {
+        data[end > chromsize, end := chromsize]
+    }
+
+    data[, chromsize := NULL]
+    data
+}
+
+#' Takes a data frame of segments and randomises their start
+#' positions (up to max start), while keeping their width constant.
+#' If the end position exceeds maxstart, the segment is 'wrapped around'
+#' by cutting into two segments, the second of which is mapped to position 0.
+randomize_positions_over_whole_genome <- function(segments, limit) {
+    segments <- copy(segments)
+    setDT(segments)
+
+    # Check input:
+    # Segments must have a 'start' column and at least one of 'end' and 'width'
+    if (!("start" %in% colnames(segments))) {
+        stop("No 'start' column")
+    }
+
+    if (!("end" %in% colnames(segments))) {
+        # need "width"
+        if (!("width" %in% colnames(segments))) {
+            stop("Neither 'end' nor 'width' in columns")
+        } else {
+            segments[, end := start + width - 1]
+        }
+    } else {
+        if (!("width" %in% colnames(segments))) {
+            if (!("end" %in% segments)) {
+                stop("Neither 'end' nor 'width' in columns")
+            } else {
+                segments[, width := end - start + 1]
+            }
+        }
+    } # input OK
+
+
+    new_starts <- sample.int(limit, segments[, .N], replace = TRUE)
+    new_ends <- new_starts + segments[["width"]] - 1
+
+    new_segments <- data.table(start = new_starts,
+                               end = new_ends,
+                               width = segments[["width"]],
+                               Unique.ID = segments[["Unique.ID"]],
+                               State = segments[["State"]])
+
+    wrap_around(new_segments, limit)
+}
+
+#' Wrap segments that exceed the limit value back into the start of the sequence
+wrap_around <- function(dt, limit) {
+    dt[, .limit := as.numeric(limit)]
+    dt[, c("start", "end", "width") := lapply(.SD, as.numeric), .SDcols = c("start", "end", "width")]
+    overspill <- copy(dt[end > .limit])
+    dt[end > .limit, c("end", "width") := .(.limit, .limit - start + 1L)]
+    overspill[, c("start", "end", "width") := .(0L, end %% .limit - 1L, end %% .limit)]
+    dt <- rbindlist(list(dt, overspill))
+    dt[, wrapped := FALSE]
+    dt[Unique.ID %in% overspill$Unique.ID, wrapped := TRUE]
+    dt[(wrapped), Unique.ID := paste0(Unique.ID, ".", letters[1:.N]), by = Unique.ID]
+    dt[, .limit := NULL]
+    dt
+}
+
+assign_seqnames <- function(dt, chromosome_ranges) {
+    setkey(chromosome_ranges, start, end)
+    ol <- foverlaps(dt, chromosome_ranges)
+    ol[, N:=.N, by = Unique.ID]
+    ol[N > 1, wrapped := TRUE]
+    ol[, adj.start := pmax(start, i.start) - start]
+    ol[, adj.end := pmin(end, i.end) - start]
+    ol[, adj.width := adj.end - adj.start + 1]
+    ol[, .(CHROM, seqnames, start = adj.start, end = adj.end, width = adj.width, Unique.ID, State, wrapped)]
+}
+
+randomize_positions <- function(dataframe, chrom_lengths, keep_to_original_chrom = FALSE, wraparound = TRUE) {
+    chrom_ranges <- chrom_ranges_from_lengths(chrom_lengths)
+    if (keep_to_original_chrom) {
+        return (randomize_positions_within_chrom(dataframe, chrom_ranges, wraparound))
+    } else {
+        return (assign_seqnames(randomize_positions_over_whole_genome(dataframe, limit = chrom_ranges[, max(end)]),
+                                chrom_ranges))
+    }
+}
+
+#' Calculate chromosome ranges from chromosome lengths
+chrom_ranges_from_lengths <- function(chr_lengths) {
+    chr_lengths <- copy(chr_lengths)
+    chr_lengths[, LENGTH.CS := cumsum(as.numeric(LENGTH))]
+    chrom_ranges <- chr_lengths[, .(CHROM,
+                                    seqnames = toupper(sub("Chr", "", CHROM)),
+                                    start=c(0, LENGTH.CS[1:(.N-1)]),
+                                    end=LENGTH.CS-1)]
+    chrom_ranges[, width := end - start + 1]
+    return(chrom_ranges)
+}
+
+#' load_chromosome lengths into a list
+#' @importFrom "data.table" rbindlist
+#' @export
+load_chromosome_lengths <- function(filename) {
+    chr.lengths <- fread(filename)
+    chrlengths_truncated_x <- rbindlist(list(chr.lengths[CHROM != "Chrx"], chr.lengths[CHROM == "Chrx", .(CHROM, LENGTH = 54800000)]))
+    full_chrlengths <- copy(chr.lengths)
+    chrlengths_truncated_x[, seqnames := toupper(sub("Chr", "", CHROM))]
+    full_chrlengths[, seqnames := toupper(sub("Chr", "", CHROM))]
+    list(full = full_chrlengths[1:.N],
+         truncated = chrlengths_truncated_x[1:.N])
+}
+
+#' Data cleaning ready for making simulations
+#' @export
+preprocess_for_simulation <- function(cnvtable, chrom_lengths_file) {
+    #########################
+    # LOAD CHROMOSOME LENGTHS
+    #########################
+    lengths <- load_chromosome_lengths(chrom_lengths_file)
+    chrlengths_truncated_x <- lengths$truncated
+    full_chrlengths <- lengths$full
+
+    ##################################################
+    # Process input CNVs to fit the chromosome lengths
+    ##################################################
+    # Data should have inclusive end points (1) i.e. the quoted end position is covered by the CNV,
+    # so an interval of 10000 20000 covers bases 10000, 10001, 10002, ..., 19999, 20000.
+    # As loaded, the data has exclusive end points (2), so for the above example, position 20000 is NOT
+    # covered by the CNV.
+    # Here I make the adjustment from type (2) to type (1). Why? This frees me from having to remember
+    # which system is being used at which particular time, and makes it less likely that I'll make
+    # quite so many off by one errors.
+
+    # Make end points inclusive:
+    cnvtable[, end := end - 1]
+
+    # Remove any segments that start after the end of the chromosome
+    cnvtable[chrlengths_truncated_x, chrom_end := LENGTH, on="seqnames"]
+    cnvtable <- cnvtable[start <= chrom_end]
+
+    # Adjust any end points that over shoot the end of the chromosome
+    cnvtable[end > chrom_end, end := chrom_end]
+    # I assume any end points that fall within a few bases of the end of the chromosome
+    # are due to preexisting errors in the data, so I set them to the end of the chromosome
+    cnvtable[chrom_end - end < 5, end := chrom_end]
+
+    # Readjust widths to match new end points
+    cnvtable[, width := end - start + 1]
+
+    return (cnvtable)
+}
+
+#' Counts the number of bases covered by 0, 1, 2 etc CNV intervals
+#' @param data - data.table of CNV intervals
+#' @param chrlengths - data.table of chromosome lengths
+#' @param endpos_is_inclusive - TRUE means an interval [start=10, end=20] includes the last position,
+#' so is 11 bases long (i.e. 10, 11, 12, ..., 19, 20]. FALSE means an interval [start=10, end=20]
+#' excludes the last position, and is 10 bases long, because it stops at 19.
+#' @importFrom "IRanges" IRanges disjoin
+#' @export
+coverage_depth_summary <- function(data, chrlengths, endpos_is_inclusive) {
+    genome_counts <- data.table(seqnames = character(0), depth = integer(0), nbases = integer(0))
+
+    # Per chromosome
+    for (seqname in unique(data$seqnames)) {
+        total_chr_bases <- chrlengths[CHROM == paste0("Chr", tolower(seqname)), LENGTH]
+
+        chrdata <- data[seqnames==seqname & start < total_chr_bases]
+
+        end_adjustment <- ifelse(endpos_is_inclusive, 0, 1)
+        disjoint <- as.data.table(disjoin(IRanges(start = chrdata[, start],
+                                                           end = chrdata[, end-end_adjustment])))
+        setkey(disjoint, start, end)
+        ol <- foverlaps(chrdata, disjoint, by.x = c("start", "end"), nomatch=0L)
+        stats <- ol[, .(width = end - start + 1, depth = uniqueN(Unique.ID)), by = .(start, end)]
+        counts <- stats[, .(nbases = sum(width)), by = depth][order(depth)]
+
+        # zero coverage
+        total_chr_bases <- max(total_chr_bases, chrdata[, max(end)]) - ifelse(endpos_is_inclusive, 0, 1)
+        total_covered_bases <- counts[, sum(nbases)]
+        counts <- rbindlist(list(counts, data.table(depth=0, nbases=total_chr_bases - total_covered_bases)))
+
+        counts[, seqnames := seqname]
+        genome_counts <- rbindlist(list(genome_counts, counts), use.names = TRUE)
+    }
+
+    genome_counts[order(seqnames, depth)]
+}
+
+
 #' Simulation code
 #' @param input_data data.table; table of CNVs
 #' @param chrlengths data.table; table of the Devil chromosome lengths
 #' @param simulation_name string; used in name of output files
 #' @param nsims int; number of simulation replicates
 #' @param base_outdir path; output will be written under this path
+#' @param plot_every int; draw a chromosome map every `plot_every` reps
 #' @param write_output bool; write output to disk?
 #' @param keep_to_original_chrom bool; should shuffled CNV segments be restricted
 #'     to their original chromosome, or be allowed to move genome wide?
@@ -12,14 +250,20 @@
 #' @param parametric bool; if TRUE, then CNV widths are drawn from a Gamma distribution,
 #'     fitted to the observed widths in the input data. If FALSE, the original widths
 #'     are used.
+#' @importFrom "logging" logwarn
+#' @importFrom "ggplot2" ggplot aes theme_classic scale_fill_manual ylab xlab ggtitle geom_point
 #' @export
 do_simulation <-
-    function(input_data, chrlengths, simulation_name, nsims, base_outdir, write_output = FALSE,
-             keep_to_original_chrom = FALSE, hard_bounds = FALSE, parametric = FALSE) {
+    function(input_data, chrlengths, simulation_name, nsims, base_outdir,
+             plot_every = 100,
+             write_output = FALSE,
+             keep_to_original_chrom = FALSE,
+             hard_bounds = FALSE,
+             parametric = FALSE) {
 
         # NB this function is huge, but it works, and as such I am reluctant to refactor
         # it - KG April 2020
-        require(IRanges)
+
         if (!keep_to_original_chrom & hard_bounds) {
             stop("Incompatible arguments: keep_to_original_chrom=FALSE, hard_bounds=TRUE")
         }
@@ -39,7 +283,7 @@ do_simulation <-
                     MIN.X = -(80/3),
                     MAX.X = (80/3))
 
-        SIMULATION.PLOT.EVERY <- 100
+        SIMULATION.PLOT.EVERY <- plot_every
 
         do_sims <- write_output # don't accidentally overwrite simulations
         if (!do_sims) {
