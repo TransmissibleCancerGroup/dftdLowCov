@@ -153,8 +153,8 @@ load_chromosome_lengths <- function(filename) {
     full_chrlengths <- copy(chr.lengths)
     chrlengths_truncated_x[, seqnames := toupper(sub("Chr", "", CHROM))]
     full_chrlengths[, seqnames := toupper(sub("Chr", "", CHROM))]
-    list(full = full_chrlengths[1:.N],
-         truncated = chrlengths_truncated_x[1:.N])
+    list(full = full_chrlengths,
+         truncated = chrlengths_truncated_x)
 }
 
 #' Data cleaning ready for making simulations

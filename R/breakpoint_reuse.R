@@ -96,5 +96,5 @@ make_segmatch <- function(coordinates, ignore_direction = TRUE) {
     }
     setcolorder(segmatch)
     setorder(segmatch, shared_breakpoint, Order)
-    return (segmatch[1:.N])
+    return (segmatch)
 }

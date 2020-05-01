@@ -39,24 +39,26 @@ get_depth <- function(data_table, chrom_lengths = NULL) {
         result <- unique(result[, .(chr, start=i.start, end=i.end, depth)])
         result[, width := as.integer(end - start + 1)]
 
-        return(result[1:.N])
+        return(result)
     }
 
     results <- list()
     for (CHR in c(1:6, "X")) {
         result <- get_depth_for_single_chr(data_table[chr==CHR])
 
-        # Adjust 0-coverage figure for any positions at the end of the chromosome
-        # that are not entered in the table
-        if (!is.null(chrom_lengths)) {
-            chrom_size <- chrom_lengths[chr == CHR, as.integer(LENGTH)]
-            if (length(chrom_size) > 0 ) {
-                max_end <- result[, max(end)]
-                if (chrom_size > max_end) {
-                    new_row <- copy(result[1])
-                    new_row[, c("start", "end", "depth") := .(max_end+1, chrom_size, 0)]
-                    new_row[, width := end - start + 1]
-                    result <- rbindlist(list(result, new_row))
+        if (nrow(result) > 0) {
+            # Adjust 0-coverage figure for any positions at the end of the chromosome
+            # that are not entered in the table
+            if (!is.null(chrom_lengths)) {
+                chrom_size <- chrom_lengths[chr == CHR, as.integer(LENGTH)]
+                if (length(chrom_size) > 0 ) {
+                    max_end <- result[, max(end)]
+                    if (chrom_size > max_end) {
+                        new_row <- copy(result[1])
+                        new_row[, c("start", "end", "depth") := .(max_end+1, chrom_size, 0)]
+                        new_row[, width := end - start + 1]
+                        result <- rbindlist(list(result, new_row))
+                    }
                 }
             }
         }
