@@ -68,3 +68,18 @@ isMarker5 <- function(cnvtable) {
 
     return (m5_cnvs)
 }
+
+#' @export
+isDFT1 <- function(cnvtable) {
+    cnvtable[is.na(DFT2) & is.na(`Non-DFTD`), New.CNV_ID_ext]
+}
+
+#' @export
+isDFT2 <- function(cnvtable) {
+    cnvtable[!is.na(DFT2), New.CNV_ID_ext]
+}
+
+#' @export
+isNonDFTD <- function(cnvtable) {
+    cnvtable[!is.na(`Non-DFTD`), New.CNV_ID_ext]
+}
