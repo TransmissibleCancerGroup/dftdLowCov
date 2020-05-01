@@ -4,13 +4,36 @@
 \alias{plot_chromosome_map}
 \title{Plot an individual chromosome's map. Assumes dt.gains and dt.losses
 have already been produced, including setting the plotting layers
-for each segment with rectangle packing}
+for each segment with rectangle packing.
+Additional segment colouring options can be set using `category_colours`.}
 \usage{
 plot_chromosome_map(dt_gains, dt_losses, chr_lengths,
-  plot_options = NULL, get_plot_options = FALSE, chr_override = NULL)
+  category_colours = NULL, plot_options = NULL,
+  get_plot_options = FALSE, chr_override = NULL)
+}
+\arguments{
+\item{dt_gains}{data.table; table of CNV gain segments on the chromosome. Must have
+the plotting layer annotation present (as added by rectangle_packing4).}
+
+\item{dt_losses}{data.table; table of CNV loss segments on the chromosome. Must have
+layer annotation.}
+
+\item{chr_lengths}{data.table; table of chromosome lengths.}
+
+\item{category_colours}{list; mapping of Category values to colours. These will be used
+to override the GAINS.SEGMENT.COLOUR and LOSS.SEGMENT.COLOUR. Only applies if the
+input data has a Category column.}
+
+\item{plot_options}{list; user can provide plotting options via this list.}
+
+\item{get_plot_options}{list; returns the default plot options.}
+
+\item{chr_override}{character; set the chromosome that the segments should be plotted
+onto. Used in the case that the chromosome can't be inferred from the data.}
 }
 \description{
 Plot an individual chromosome's map. Assumes dt.gains and dt.losses
 have already been produced, including setting the plotting layers
-for each segment with rectangle packing
+for each segment with rectangle packing.
+Additional segment colouring options can be set using `category_colours`.
 }

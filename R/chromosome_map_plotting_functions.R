@@ -63,9 +63,28 @@ rectangle_packing4 <- function(dt, sortby = "width") {
 
 #' Plot an individual chromosome's map. Assumes dt.gains and dt.losses
 #' have already been produced, including setting the plotting layers
-#' for each segment with rectangle packing
+#' for each segment with rectangle packing.
+#' Additional segment colouring options can be set using `category_colours`.
+#' @param dt_gains data.table; table of CNV gain segments on the chromosome. Must have
+#'     the plotting layer annotation present (as added by rectangle_packing4).
+#' @param dt_losses data.table; table of CNV loss segments on the chromosome. Must have
+#'     layer annotation.
+#' @param chr_lengths data.table; table of chromosome lengths.
+#' @param category_colours list; mapping of Category values to colours. These will be used
+#'     to override the GAINS.SEGMENT.COLOUR and LOSS.SEGMENT.COLOUR. Only applies if the
+#'     input data has a Category column.
+#' @param plot_options list; user can provide plotting options via this list.
+#' @param get_plot_options list; returns the default plot options.
+#' @param chr_override character; set the chromosome that the segments should be plotted
+#'     onto. Used in the case that the chromosome can't be inferred from the data.
 #' @export
-plot_chromosome_map <- function(dt_gains, dt_losses, chr_lengths, plot_options = NULL, get_plot_options = FALSE, chr_override = NULL) {
+plot_chromosome_map <- function(dt_gains,
+                                dt_losses,
+                                chr_lengths,
+                                category_colours = NULL,
+                                plot_options = NULL,
+                                get_plot_options = FALSE,
+                                chr_override = NULL) {
 
     default.plot.options <- list(
         GAINS.SEGMENT.COLOUR  = "#EA6A58",
@@ -193,11 +212,24 @@ plot_chromosome_map <- function(dt_gains, dt_losses, chr_lengths, plot_options =
              col = plot_options$LOSSES.HIST.COLOUR, border = NA)
     }
 
-    # Gains segments
+    # Plot gains segments
+    # 1) Decide on the fill colour for the segments. If category colours have been specified,
+    #    and there is a Category annotation in the data, then prioritise this colour.
+    #    Otherwise, or if there is any error or missing value in the category colours,use
+    #    whatever is in the plot options list for GAINS.SEGMENT.COLOUR.
+    if (nrow(dt_gains) > 0 & "Category" %in% colnames(dt_gains) & !is.null(category_colours)) {
+        gains_fill_colours <- category_colours[dt_gains$Category]
+        gains_fill_colours[sapply(gains_fill_colours, is.null)] <- plot_options$GAINS.SEGMENT.COLOUR
+        gains_fill_colours <- unlist(gains_fill_colours)
+        stopifnot(length(gains_fill_colours) == nrow(dt_gains))
+    } else {
+        gains_fill_colours <- plot_options$GAINS.SEGMENT.COLOUR
+    }
+    # 2) Plot the segments using rect
     rect(dt_gains$layer - 0.8 + chrom_spacing,
          -dt_gains$start,
          dt_gains$layer - 0.2 + chrom_spacing,
-         -dt_gains$end, col = plot_options$GAINS.SEGMENT.COLOUR,
+         -dt_gains$end, col = gains_fill_colours,
          lwd = plot_options$SEGMENT.LWD)
 
     if ("mip_position" %in% colnames(dt_gains)) {
@@ -205,10 +237,20 @@ plot_chromosome_map <- function(dt_gains, dt_losses, chr_lengths, plot_options =
     }
 
     # Losses segments
+    # 1) Select the fill colour(s)
+    if (nrow(dt_losses) > 0 & "Category" %in% colnames(dt_losses) & !is.null(category_colours)) {
+        losses_fill_colours <- category_colours[dt_losses$Category]
+        losses_fill_colours[sapply(losses_fill_colours, is.null)] <- plot_options$LOSSES.SEGMENT.COLOUR
+        losses_fill_colours <- unlist(losses_fill_colours)
+        stopifnot(length(losses_fill_colours) == nrow(dt_losses))
+    } else {
+        losses_fill_colours <- plot_options$LOSSES.SEGMENT.COLOUR
+    }
+    # 2) Plot the segments with rect
     rect(dt_losses$layer + 0.8 - chrom_spacing,
          -dt_losses$start,
          dt_losses$layer + 0.2 - chrom_spacing,
-         -dt_losses$end, col = plot_options$LOSSES.SEGMENT.COLOUR,
+         -dt_losses$end, col = losses_fill_colours,
          lwd = plot_options$SEGMENT.LWD)
 
     if ("mip_position" %in% colnames(dt_losses)) {
