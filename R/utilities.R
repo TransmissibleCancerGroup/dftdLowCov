@@ -184,3 +184,53 @@ pad <- function(v, padlen, padval = 0) {
     }
     return(c(v, rep(padval, (padlen - l))))
 }
+
+
+#' Make a presence / absence table for CNVs
+#' Melts the CNV table on sample name. The output table has the columns
+#' "New.CNV_ID_ext", "chr", "start", "end", "Index", "Type", plus any
+#' extra columns passed in the `extra_columns` parameter
+#' @param cnv_table data.table; Table of CNV information
+#' @param extra_columns character vector; vector of additional columns to include in output.
+#' @importFrom "naturalsort" naturalsort
+#' @importFrom "data.table" melt.data.table
+#' @export
+make_presence_absence_table <- function(cnv_table, extra_columns = NULL) {
+    sample_cols <- naturalsort(grep("^\\d+[HT].*", colnames(cnv_table), value = TRUE))
+    cnv_table_ <- copy(cnv_table) # Make local copy
+    cnv_table_[, (sample_cols) := lapply(.SD, as.integer), .SDcols = sample_cols]
+    cnv_table_[, Index := .I]
+
+    id_vars <- c("New.CNV_ID_ext", "chr", "start", "end", "Index", "Type")
+    if (!is.null(extra_columns)) {
+        id_vars <- union(id_vars, intersect(colnames(cnv_table), extra_columns))
+    }
+    cnvs <-
+        melt.data.table(
+            cnv_table_,
+            id.vars = id_vars,
+            measure.vars = sample_cols,
+            value.name = "cnv_present",
+            variable.name = "sample",
+            value.factor = FALSE,
+            variable.factor = FALSE)[, cnv_present := as.logical(cnv_present)]
+    cnvs
+}
+
+#' Make a table of aberrant copy number states for each combination of CNV ID & sample ID.
+#' 'Aberrant' copy number is returned as NA if the CNV is not present in the sample, which
+#' doesn't mean that the copy number is 0, it means that the copy number is not aberrant,
+#' and is the inherited wild-type state of the DFTD founder Devil (most likely 2).
+#' @param cnv_table data.table; Table of CNV information
+#' @export
+get_aberrant_copy_number_per_sample <- function(cnv_table) {
+    table_list <- list()
+    for (id in unique(cnv_table$New.CNV_ID_ext)) {
+        dt <- cnv_table[New.CNV_ID_ext == id, parse_sample_cnv_group(Sample_CNV_Group)]
+        dt[, New.CNV_ID_ext := id]
+        table_list[[length(table_list)+1]] <- dt
+    }
+    output_table <- rbindlist(table_list)
+    setkey(output_table, New.CNV_ID_ext)
+    output_table
+}
