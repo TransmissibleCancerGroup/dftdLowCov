@@ -10,4 +10,4 @@ R package of code relevant to DFTD project
 
 ## Data files
 
-The package contains a number of data files. These are the also the files included as supplementary tables in the paper. The files can be listed with the command `list.files(system.file("extdata", "", package = "dftdLowCov"))`. To get the path of a specific file, e.g. "2020-05-07_TableS3_CNVs.xlsx", use the command `system.file("extdata", "2020-05-07_TableS3_CNVs.xlsx", package = "dftdLowCov")`.
+The package contains a number of data files. These are the also the files included as supplementary tables in the paper. The files can be listed with the command `list.files(system.file("extdata", "", package = "dftdLowCov"))`. To get the path of a specific file, e.g. "2020-05-07_TableS3_CNVs.xlsx", use the command `system.file("extdata", "2020-05-07_TableS3_CNVs.xlsx", package = "dftdLowCov")`. To load the data directly we provide the functions `load_cnv_table()` and `load_sample_table()`.
