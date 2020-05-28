@@ -144,26 +144,13 @@ chrom_ranges_from_lengths <- function(chr_lengths) {
     return(chrom_ranges)
 }
 
-#' load_chromosome lengths into a list
-#' @importFrom "data.table" rbindlist
-#' @export
-load_chromosome_lengths <- function(filename) {
-    chr.lengths <- fread(filename)
-    chrlengths_truncated_x <- rbindlist(list(chr.lengths[CHROM != "Chrx"], chr.lengths[CHROM == "Chrx", .(CHROM, LENGTH = 54800000)]))
-    full_chrlengths <- copy(chr.lengths)
-    chrlengths_truncated_x[, seqnames := toupper(sub("Chr", "", CHROM))]
-    full_chrlengths[, seqnames := toupper(sub("Chr", "", CHROM))]
-    list(full = full_chrlengths,
-         truncated = chrlengths_truncated_x)
-}
-
 #' Data cleaning ready for making simulations
 #' @export
 preprocess_for_simulation <- function(cnvtable, chrom_lengths_file) {
     #########################
     # LOAD CHROMOSOME LENGTHS
     #########################
-    lengths <- load_chromosome_lengths(chrom_lengths_file)
+    lengths <- load_chromosome_lengths()
     chrlengths_truncated_x <- lengths$truncated
     full_chrlengths <- lengths$full
 
