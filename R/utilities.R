@@ -234,3 +234,17 @@ get_aberrant_copy_number_per_sample <- function(cnv_table) {
     setkey(output_table, New.CNV_ID_ext)
     output_table
 }
+
+#' Helper for making matching segment tables when looking at recurrent breakpoints
+#' @param cnv_table data.table; Table of CNV information
+#' @export
+make_coordinates <- function(cnv_table) {
+    cnvs <- copy(cnv_table)
+    cnvs[Cancer_type == "DFT1", Category := "DFT1"]
+    cnvs[Cancer_type == "DFT2", Category := "DFT2"]
+    cnvs[Cancer_type == "Non-DFTD", Category := dftdLowCov::scan_col("(\\d+T\\d?) ", Sample_group, c('s'), c('sample'))]
+    cnvs[Cancer_type == "Non-DFTD", Category := paste("NonDFTD", Category)]
+
+    coordinates <- cnvs[, .(Order=.I, chr=Chr, start=Start, end=End, Type, CNV_ID_ext, Category)]
+    return(coordinates)
+}
